@@ -1,0 +1,1181 @@
+/* ============================================================
+   PIXELTOOLS — script.js
+   FOWLSIGNS™ Production Build
+   All tools run entirely in the browser via Canvas API.
+   ============================================================ */
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  currentTool: null,
+  sourceImage: null,        // HTMLImageElement from upload
+  outputCanvas: null,       // Result canvas
+  spriteFrames: [],         // Array of HTMLImageElement (sprite sheet)
+  paletteColors: [],        // Extracted colors
+};
+
+// ============================================================
+// TOOL DEFINITIONS
+// ============================================================
+const TOOLS = {
+  upscaler: {
+    icon: '⬆️',
+    title: 'Pixel Art Upscaler',
+    desc: 'Scale pixel art with nearest-neighbor interpolation. Perfectly sharp, zero blur.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Scale Preset</label>
+        <div class="preset-row">
+          ${['2x','4x','8x','10x'].map(v => `<button class="preset-btn" data-scale="${v.replace('x','')}" onclick="setScale(this)">${v}</button>`).join('')}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Custom Scale (1–20)</label>
+        <input type="number" id="customScale" min="1" max="20" value="2" oninput="syncCustomScale(this)" />
+      </div>
+    `,
+  },
+  svg: {
+    icon: '✦',
+    title: 'Pixel Art → SVG',
+    desc: 'Convert pixel art to scalable SVG. Every pixel becomes a vector rectangle.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Max Image Size (px)</label>
+        <select id="svgMaxSize">
+          <option value="64">64px (recommended)</option>
+          <option value="128">128px</option>
+          <option value="256">256px</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>Optimization</label>
+        <div class="preset-row">
+          <button class="preset-btn active" id="svgOptOn" onclick="setSvgOpt(true)">On</button>
+          <button class="preset-btn" id="svgOptOff" onclick="setSvgOpt(false)">Off</button>
+        </div>
+      </div>
+    `,
+  },
+  pixelate: {
+    icon: '⬛',
+    title: 'Image → Pixel Art',
+    desc: 'Turn any photo into pixel art. Reduce colors for that authentic retro look.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Pixel Size</label>
+        <div class="preset-row">
+          ${[8,16,32,64].map(v => `<button class="preset-btn${v===16?' active':''}" data-px="${v}" onclick="setPixelSize(this)">${v}px</button>`).join('')}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Color Reduction <span id="colorCountLabel">16</span> colors</label>
+        <input type="range" id="colorCount" min="2" max="64" value="16"
+          oninput="document.getElementById('colorCountLabel').textContent=this.value" />
+      </div>
+    `,
+  },
+  palette: {
+    icon: '🎨',
+    title: 'Palette Extractor',
+    desc: 'Extract dominant colors. Click any swatch to copy its HEX code.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Number of Colors</label>
+        <div class="preset-row">
+          ${[4,8,12,16,24,32].map(v => `<button class="preset-btn${v===16?' active':''}" data-colors="${v}" onclick="setPaletteCount(this)">${v}</button>`).join('')}
+        </div>
+      </div>
+    `,
+  },
+  grid: {
+    icon: '⊞',
+    title: 'Pixel Grid Overlay',
+    desc: 'Add a pixel grid on any image. Great for sprite guides and game dev references.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Grid Size</label>
+        <div class="preset-row">
+          ${[8,16,32,64].map(v => `<button class="preset-btn${v===16?' active':''}" data-grid="${v}" onclick="setGridSize(this)">${v}px</button>`).join('')}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Grid Color</label>
+        <input type="color" id="gridColor" value="#ffffff" />
+      </div>
+      <div class="setting-group">
+        <label>Opacity <span id="gridOpacityLabel">50</span>%</label>
+        <input type="range" id="gridOpacity" min="5" max="100" value="50"
+          oninput="document.getElementById('gridOpacityLabel').textContent=this.value" />
+      </div>
+    `,
+  },
+  sprite: {
+    icon: '▦',
+    title: 'Sprite Sheet Generator',
+    desc: 'Combine animation frames into a single sprite sheet. Set columns and spacing.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Columns</label>
+        <input type="number" id="spriteColumns" min="1" max="16" value="4" />
+      </div>
+      <div class="setting-group">
+        <label>Spacing (px)</label>
+        <input type="number" id="spriteSpacing" min="0" max="64" value="2" />
+      </div>
+      <div class="setting-group">
+        <label>Frame Size</label>
+        <select id="spriteFrameSize">
+          <option value="auto">Auto (from first frame)</option>
+          <option value="16">16×16</option>
+          <option value="32">32×32</option>
+          <option value="48">48×48</option>
+          <option value="64">64×64</option>
+        </select>
+      </div>
+    `,
+    multiUpload: true,
+  },
+  dither: {
+    icon: '◈',
+    title: 'Pixel Dithering Tool',
+    desc: 'Apply classic dithering algorithms with retro palettes. Floyd-Steinberg, Bayer, and more.',
+    settings: () => `
+      <div class="setting-group">
+        <label>Pixel Size</label>
+        <div class="preset-row">
+          ${[1,2,4,8].map(v => `<button class="preset-btn${v===1?' active':''}" data-dpx="${v}" onclick="setDitherPx(this)">${v}px</button>`).join('')}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label>Algorithm</label>
+        <select id="ditherAlgo">
+          <option value="none">None (quantize only)</option>
+          <option value="floyd" selected>Floyd-Steinberg</option>
+          <option value="bayer">Bayer 4×4</option>
+          <option value="ordered">Ordered 8×8</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>Palette</label>
+        <select id="ditherPalette">
+          <option value="gameboy">Game Boy (4 colors)</option>
+          <option value="nes">NES (52 colors)</option>
+          <option value="grayscale">Grayscale (8 shades)</option>
+          <option value="c64">C64 (16 colors)</option>
+          <option value="custom">Custom (color limit)</option>
+        </select>
+      </div>
+      <div class="setting-group" id="colorLimitGroup" style="display:none;">
+        <label>Color Limit <span id="ditherColorLabel">8</span></label>
+        <input type="range" id="ditherColors" min="2" max="32" value="8"
+          oninput="document.getElementById('ditherColorLabel').textContent=this.value" />
+      </div>
+    `,
+  },
+};
+
+// Dithering palettes
+const PALETTES = {
+  gameboy: [[15,56,15],[48,98,48],[139,172,15],[155,188,15]],
+  nes: [
+    [124,124,124],[0,0,252],[0,0,188],[68,40,188],[148,0,132],[168,0,32],[168,16,0],[136,20,0],
+    [80,48,0],[0,120,0],[0,104,0],[0,88,0],[0,64,88],[0,0,0],[0,0,0],[0,0,0],
+    [188,188,188],[0,120,248],[0,88,248],[104,68,252],[216,0,204],[228,0,88],[248,56,0],[228,92,16],
+    [172,124,0],[0,184,0],[0,168,0],[0,168,68],[0,136,136],[0,0,0],[0,0,0],[0,0,0],
+    [248,248,248],[60,188,252],[104,136,252],[152,120,248],[248,120,248],[248,88,152],[248,120,88],[252,160,68],
+    [248,184,0],[184,248,24],[88,216,84],[88,248,152],[0,232,216],[120,120,120],[0,0,0],[0,0,0],
+  ],
+  grayscale: [[0,0,0],[36,36,36],[72,72,72],[109,109,109],[145,145,145],[182,182,182],[218,218,218],[255,255,255]],
+  c64: [
+    [0,0,0],[255,255,255],[136,0,0],[170,255,238],[204,68,204],[0,204,85],[0,0,170],[238,238,119],
+    [221,136,85],[102,68,0],[255,119,119],[51,51,51],[119,119,119],[170,255,102],[0,136,255],[187,187,187],
+  ],
+};
+
+// ============================================================
+// UI NAVIGATION
+// ============================================================
+function showHome() {
+  document.getElementById('home').classList.add('active');
+  document.getElementById('toolPage').classList.remove('active');
+  state.currentTool = null;
+  // Close mobile nav
+  document.getElementById('navLinks').classList.remove('open');
+}
+
+function openTool(toolKey) {
+  const tool = TOOLS[toolKey];
+  if (!tool) return;
+
+  state.currentTool = toolKey;
+  state.sourceImage = null;
+  state.spriteFrames = [];
+
+  document.getElementById('home').classList.remove('active');
+  document.getElementById('toolPage').classList.add('active');
+
+  // Populate sidebar
+  document.getElementById('sidebarIcon').textContent = tool.icon;
+  document.getElementById('sidebarTitle').textContent = tool.title;
+  document.getElementById('sidebarDesc').textContent = tool.desc;
+  document.getElementById('settingsPanel').innerHTML = tool.settings();
+
+  // Upload zones
+  const uploadZone = document.getElementById('uploadZone');
+  const multiUploadZone = document.getElementById('multiUploadZone');
+  if (tool.multiUpload) {
+    uploadZone.classList.add('hidden');
+    multiUploadZone.classList.remove('hidden');
+  } else {
+    uploadZone.classList.remove('hidden');
+    multiUploadZone.classList.add('hidden');
+  }
+
+  // Reset UI
+  document.getElementById('actionBar').style.display = 'none';
+  document.getElementById('downloadBtn').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('previewCanvas').style.display = 'none';
+  document.getElementById('canvasEmpty').style.display = 'flex';
+  document.getElementById('canvasToolbar').style.display = 'none';
+  document.getElementById('paletteOutput').style.display = 'none';
+  document.getElementById('spriteFrames').style.display = 'none';
+
+  // Dither custom palette visibility
+  if (toolKey === 'dither') {
+    const paletteSelect = document.getElementById('ditherPalette');
+    if (paletteSelect) {
+      paletteSelect.addEventListener('change', () => {
+        const g = document.getElementById('colorLimitGroup');
+        if (g) g.style.display = paletteSelect.value === 'custom' ? 'flex' : 'none';
+      });
+    }
+  }
+
+  // Close mobile nav
+  document.getElementById('navLinks').classList.remove('open');
+  window.scrollTo(0,0);
+}
+
+// ============================================================
+// UPLOAD HANDLING
+// ============================================================
+function initUploads() {
+  const zone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const multiZone = document.getElementById('multiUploadZone');
+  const multiInput = document.getElementById('multiFileInput');
+
+  // Single image upload — input is overlaid, handles its own click
+  fileInput.addEventListener('change', e => {
+    handleFile(e.target.files[0]);
+    e.target.value = ''; // reset so same file can be re-uploaded
+  });
+
+  // Drag-and-drop single
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  // Multi upload (sprite sheet) — input is overlaid
+  multiInput.addEventListener('change', e => {
+    handleMultiFiles(e.target.files);
+    e.target.value = '';
+  });
+  multiZone.addEventListener('dragover', e => { e.preventDefault(); multiZone.classList.add('drag-over'); });
+  multiZone.addEventListener('dragleave', () => multiZone.classList.remove('drag-over'));
+  multiZone.addEventListener('drop', e => {
+    e.preventDefault();
+    multiZone.classList.remove('drag-over');
+    handleMultiFiles(e.dataTransfer.files);
+  });
+
+  // Process + download
+  document.getElementById('processBtn').addEventListener('click', processCurrentTool);
+  document.getElementById('downloadBtn').addEventListener('click', downloadResult);
+}
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      state.sourceImage = img;
+      showImagePreview(img);
+      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('downloadBtn').style.display = 'none';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleMultiFiles(files) {
+  const fileArr = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if (!fileArr.length) return;
+
+  const promises = fileArr.map(f => new Promise(res => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(f);
+  }));
+
+  Promise.all(promises).then(images => {
+    state.spriteFrames = images;
+    renderFramePreviews();
+    document.getElementById('actionBar').style.display = 'flex';
+  });
+}
+
+function showImagePreview(img) {
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+  canvas.style.display = 'block';
+  document.getElementById('canvasEmpty').style.display = 'none';
+  document.getElementById('canvasToolbar').style.display = 'flex';
+  document.getElementById('canvasInfo').textContent = `${img.width} × ${img.height}px`;
+}
+
+// ============================================================
+// PROCESS DISPATCHER
+// ============================================================
+function processCurrentTool() {
+  const tool = state.currentTool;
+  if (!tool) return;
+
+  if (tool === 'sprite') {
+    if (state.spriteFrames.length < 1) return alert('Please upload at least one frame.');
+  } else {
+    if (!state.sourceImage) return alert('Please upload an image first.');
+  }
+
+  showLoading(true);
+
+  // Use setTimeout to let the UI update before heavy processing
+  setTimeout(() => {
+    try {
+      switch(tool) {
+        case 'upscaler':  runUpscaler(); break;
+        case 'svg':       runSVGConverter(); break;
+        case 'pixelate':  runPixelate(); break;
+        case 'palette':   runPaletteExtractor(); break;
+        case 'grid':      runGridOverlay(); break;
+        case 'sprite':    runSpriteSheet(); break;
+        case 'dither':    runDithering(); break;
+      }
+    } catch(err) {
+      console.error(err);
+      alert('Processing error: ' + err.message);
+    } finally {
+      showLoading(false);
+    }
+  }, 50);
+}
+
+function showLoading(show) {
+  document.getElementById('loading').style.display = show ? 'block' : 'none';
+  document.getElementById('processBtn').disabled = show;
+}
+
+// ============================================================
+// TOOL 1: PIXEL ART UPSCALER
+// ============================================================
+let currentScale = 2;
+function setScale(btn) {
+  currentScale = parseInt(btn.dataset.scale);
+  document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const ci = document.getElementById('customScale');
+  if (ci) ci.value = currentScale;
+}
+function syncCustomScale(input) {
+  currentScale = Math.max(1, Math.min(20, parseInt(input.value) || 2));
+  document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
+}
+
+function runUpscaler() {
+  const img = state.sourceImage;
+  const scale = currentScale;
+  const w = img.width * scale;
+  const h = img.height * scale;
+
+  // Safety check
+  if (w * h > 16000000) {
+    alert(`Output would be ${w}×${h}px (${(w*h/1e6).toFixed(1)}MP). Try a smaller scale.`);
+    return;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Nearest-neighbor via imageSmoothingEnabled = false
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, w, h);
+
+  displayOutputCanvas(canvas, `${w} × ${h}px (${scale}x upscaled)`);
+}
+
+// ============================================================
+// TOOL 2: PIXEL ART → SVG
+// ============================================================
+let svgOptimize = true;
+function setSvgOpt(on) {
+  svgOptimize = on;
+  document.getElementById('svgOptOn').classList.toggle('active', on);
+  document.getElementById('svgOptOff').classList.toggle('active', !on);
+}
+
+function runSVGConverter() {
+  const img = state.sourceImage;
+  const maxSize = parseInt(document.getElementById('svgMaxSize').value) || 64;
+
+  // Scale down to maxSize if needed
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+
+  // Get pixel data
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = w; tmpCanvas.height = h;
+  const tmpCtx = tmpCanvas.getContext('2d');
+  tmpCtx.imageSmoothingEnabled = false;
+  tmpCtx.drawImage(img, 0, 0, w, h);
+  const { data } = tmpCtx.getImageData(0, 0, w, h);
+
+  // Build pixel grid
+  const pixels = [];
+  for (let y = 0; y < h; y++) {
+    pixels[y] = [];
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const a = data[idx + 3];
+      if (a === 0) { pixels[y][x] = null; continue; }
+      pixels[y][x] = rgbToHex(data[idx], data[idx+1], data[idx+2]);
+    }
+  }
+
+  // Generate SVG rects (with run-length encoding optimization on rows)
+  let rects = '';
+  if (svgOptimize) {
+    // Merge horizontally contiguous same-color pixels
+    for (let y = 0; y < h; y++) {
+      let x = 0;
+      while (x < w) {
+        const color = pixels[y][x];
+        if (color === null) { x++; continue; }
+        let runLen = 1;
+        while (x + runLen < w && pixels[y][x + runLen] === color) runLen++;
+        rects += `<rect x="${x}" y="${y}" width="${runLen}" height="1" fill="${color}"/>`;
+        x += runLen;
+      }
+    }
+  } else {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (pixels[y][x] === null) continue;
+        rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${pixels[y][x]}"/>`;
+      }
+    }
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">${rects}</svg>`;
+
+  // Store for download
+  state.svgData = svg;
+  state.outputType = 'svg';
+
+  // Show preview rasterized
+  const previewScale = Math.max(1, Math.min(8, Math.floor(400 / Math.max(w, h))));
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = w * previewScale; outCanvas.height = h * previewScale;
+  const octx = outCanvas.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(tmpCanvas, 0, 0, w * previewScale, h * previewScale);
+  displayOutputCanvas(outCanvas, `${w}×${h}px → SVG (${rects.split('<rect').length - 1} rects)`);
+
+  document.getElementById('downloadBtn').textContent = '⬇ Download SVG';
+  document.getElementById('downloadBtn').style.display = 'block';
+}
+
+// ============================================================
+// TOOL 3: IMAGE → PIXEL ART
+// ============================================================
+let currentPixelSize = 16;
+function setPixelSize(btn) {
+  currentPixelSize = parseInt(btn.dataset.px);
+  document.querySelectorAll('[data-px]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function runPixelate() {
+  const img = state.sourceImage;
+  const px = currentPixelSize;
+  const colorCount = parseInt(document.getElementById('colorCount').value) || 16;
+
+  // Step 1: Downscale
+  const smallW = Math.max(1, Math.round(img.width / px));
+  const smallH = Math.max(1, Math.round(img.height / px));
+
+  const smallCanvas = document.createElement('canvas');
+  smallCanvas.width = smallW; smallCanvas.height = smallH;
+  const sCtx = smallCanvas.getContext('2d');
+  sCtx.imageSmoothingEnabled = true;
+  sCtx.drawImage(img, 0, 0, smallW, smallH);
+
+  // Step 2: Quantize colors
+  const imgData = sCtx.getImageData(0, 0, smallW, smallH);
+  quantizeImageData(imgData, colorCount);
+  sCtx.putImageData(imgData, 0, 0);
+
+  // Step 3: Upscale nearest-neighbor
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = img.width; outCanvas.height = img.height;
+  const oCtx = outCanvas.getContext('2d');
+  oCtx.imageSmoothingEnabled = false;
+  oCtx.drawImage(smallCanvas, 0, 0, img.width, img.height);
+
+  displayOutputCanvas(outCanvas, `Pixelated ${px}px blocks · ${colorCount} colors`);
+}
+
+// Simple median-cut color quantization
+function quantizeImageData(imgData, numColors) {
+  const data = imgData.data;
+  const pixels = [];
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i+3] > 128) pixels.push([data[i], data[i+1], data[i+2]]);
+  }
+  const palette = medianCut(pixels, numColors);
+
+  // Map each pixel to nearest palette color
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i+3] < 128) continue;
+    const nearest = findNearest(palette, data[i], data[i+1], data[i+2]);
+    data[i] = nearest[0]; data[i+1] = nearest[1]; data[i+2] = nearest[2];
+  }
+}
+
+function medianCut(pixels, numColors) {
+  if (pixels.length === 0) return [[0,0,0]];
+  let buckets = [pixels];
+  while (buckets.length < numColors) {
+    const largest = buckets.reduce((a, b) => a.length > b.length ? a : b);
+    if (largest.length < 2) break;
+    const idx = buckets.indexOf(largest);
+    const split = splitBucket(largest);
+    buckets.splice(idx, 1, ...split);
+  }
+  return buckets.map(b => {
+    const avg = b.reduce((a, p) => [a[0]+p[0], a[1]+p[1], a[2]+p[2]], [0,0,0]);
+    return [Math.round(avg[0]/b.length), Math.round(avg[1]/b.length), Math.round(avg[2]/b.length)];
+  });
+}
+
+function splitBucket(pixels) {
+  // Find channel with largest range
+  let rMin=255,rMax=0,gMin=255,gMax=0,bMin=255,bMax=0;
+  for (const [r,g,b] of pixels) {
+    if(r<rMin)rMin=r; if(r>rMax)rMax=r;
+    if(g<gMin)gMin=g; if(g>gMax)gMax=g;
+    if(b<bMin)bMin=b; if(b>bMax)bMax=b;
+  }
+  const rRange = rMax-rMin, gRange = gMax-gMin, bRange = bMax-bMin;
+  const ch = rRange >= gRange && rRange >= bRange ? 0 : gRange >= bRange ? 1 : 2;
+  const sorted = [...pixels].sort((a,b) => a[ch]-b[ch]);
+  const mid = Math.floor(sorted.length / 2);
+  return [sorted.slice(0, mid), sorted.slice(mid)];
+}
+
+function findNearest(palette, r, g, b) {
+  let best = palette[0], bestDist = Infinity;
+  for (const p of palette) {
+    const d = (p[0]-r)**2 + (p[1]-g)**2 + (p[2]-b)**2;
+    if (d < bestDist) { bestDist = d; best = p; }
+  }
+  return best;
+}
+
+// ============================================================
+// TOOL 4: COLOR PALETTE EXTRACTOR
+// ============================================================
+let paletteColorCount = 16;
+function setPaletteCount(btn) {
+  paletteColorCount = parseInt(btn.dataset.colors);
+  document.querySelectorAll('[data-colors]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function runPaletteExtractor() {
+  const img = state.sourceImage;
+  const count = paletteColorCount;
+
+  // Downscale for speed
+  const maxDim = 200;
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = w; tmpCanvas.height = h;
+  const ctx = tmpCanvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const pixels = [];
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i+3] > 128) pixels.push([data[i], data[i+1], data[i+2]]);
+  }
+
+  const palette = medianCut(pixels, count);
+  state.paletteColors = palette;
+
+  // Render palette UI
+  const paletteOut = document.getElementById('paletteOutput');
+  paletteOut.style.display = 'block';
+  document.getElementById('previewCanvas').style.display = 'none';
+
+  const swatchHtml = palette.map(color => {
+    const hex = rgbToHex(...color);
+    return `
+      <div class="swatch" onclick="copySwatch('${hex}')" title="Click to copy ${hex}">
+        <div class="swatch-color" style="background:${hex}"></div>
+        <div class="swatch-hex">${hex}</div>
+      </div>
+    `;
+  }).join('');
+
+  paletteOut.innerHTML = `
+    <h3>${palette.length} Dominant Colors — Click to Copy HEX</h3>
+    <div class="palette-swatches">${swatchHtml}</div>
+    <button class="btn-download" onclick="downloadPaletteImage()" style="display:inline-flex;margin-top:8px;">⬇ Download Palette PNG</button>
+  `;
+
+  document.getElementById('canvasToolbar').style.display = 'flex';
+  document.getElementById('canvasInfo').textContent = `${palette.length} colors extracted`;
+  document.getElementById('downloadBtn').style.display = 'none';
+}
+
+function copySwatch(hex) {
+  navigator.clipboard.writeText(hex).catch(() => {});
+  showToast(`Copied ${hex}`);
+}
+
+function downloadPaletteImage() {
+  const palette = state.paletteColors;
+  if (!palette.length) return;
+  const sw = 80, sh = 80, padding = 8;
+  const cols = Math.min(palette.length, 8);
+  const rows = Math.ceil(palette.length / cols);
+  const w = cols * (sw + padding) + padding;
+  const h = rows * (sh + padding + 18) + padding + 32;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px monospace';
+  ctx.fillText('PixelTools Palette — FOWLSIGNS™', padding, 20);
+
+  palette.forEach((color, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = padding + col * (sw + padding);
+    const y = 32 + padding + row * (sh + padding + 18);
+    ctx.fillStyle = rgbToHex(...color);
+    ctx.fillRect(x, y, sw, sh);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px monospace';
+    ctx.fillText(rgbToHex(...color), x, y + sh + 12);
+  });
+
+  downloadCanvas(canvas, 'palette.png');
+}
+
+// ============================================================
+// TOOL 5: PIXEL GRID OVERLAY
+// ============================================================
+let gridSize = 16;
+function setGridSize(btn) {
+  gridSize = parseInt(btn.dataset.grid);
+  document.querySelectorAll('[data-grid]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function runGridOverlay() {
+  const img = state.sourceImage;
+  const gs = gridSize;
+  const gridColor = document.getElementById('gridColor').value;
+  const opacity = (parseInt(document.getElementById('gridOpacity').value) || 50) / 100;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width; canvas.height = img.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+
+  // Draw grid lines
+  const hex = gridColor;
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+
+  ctx.strokeStyle = `rgba(${r},${g},${b},${opacity})`;
+  ctx.lineWidth = 1;
+
+  for (let x = 0; x <= img.width; x += gs) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, img.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= img.height; y += gs) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(img.width, y + 0.5);
+    ctx.stroke();
+  }
+
+  displayOutputCanvas(canvas, `${gs}px grid overlay`);
+}
+
+// ============================================================
+// TOOL 6: SPRITE SHEET GENERATOR
+// ============================================================
+function renderFramePreviews() {
+  const container = document.getElementById('spriteFrames');
+  container.style.display = 'block';
+  document.getElementById('canvasEmpty').style.display = 'none';
+  document.getElementById('canvasToolbar').style.display = 'flex';
+  document.getElementById('canvasInfo').textContent = `${state.spriteFrames.length} frames loaded`;
+
+  const grid = document.createElement('div');
+  grid.className = 'frames-grid';
+
+  state.spriteFrames.forEach((img, i) => {
+    const el = document.createElement('div');
+    el.className = 'frame-thumb';
+    const imgEl = document.createElement('img');
+    imgEl.src = img.src;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-frame';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => {
+      state.spriteFrames.splice(i, 1);
+      renderFramePreviews();
+    };
+    const num = document.createElement('div');
+    num.className = 'frame-num';
+    num.textContent = `#${i+1}`;
+    el.appendChild(imgEl);
+    el.appendChild(removeBtn);
+    el.appendChild(num);
+    grid.appendChild(el);
+  });
+
+  container.innerHTML = '';
+  const h3 = document.createElement('h3');
+  h3.textContent = `${state.spriteFrames.length} Frames — Click × to remove`;
+  container.appendChild(h3);
+  container.appendChild(grid);
+}
+
+function runSpriteSheet() {
+  const frames = state.spriteFrames;
+  if (!frames.length) return;
+
+  const cols = Math.max(1, parseInt(document.getElementById('spriteColumns').value) || 4);
+  const spacing = Math.max(0, parseInt(document.getElementById('spriteSpacing').value) || 0);
+  const frameSizeInput = document.getElementById('spriteFrameSize').value;
+
+  let fw, fh;
+  if (frameSizeInput === 'auto') {
+    fw = frames[0].width;
+    fh = frames[0].height;
+  } else {
+    fw = fh = parseInt(frameSizeInput);
+  }
+
+  const rows = Math.ceil(frames.length / cols);
+  const sheetW = cols * fw + (cols - 1) * spacing;
+  const sheetH = rows * fh + (rows - 1) * spacing;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = sheetW; canvas.height = sheetH;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  frames.forEach((img, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = col * (fw + spacing);
+    const y = row * (fh + spacing);
+    ctx.drawImage(img, x, y, fw, fh);
+  });
+
+  document.getElementById('spriteFrames').style.display = 'none';
+  displayOutputCanvas(canvas, `${sheetW}×${sheetH}px · ${frames.length} frames · ${cols} cols`);
+}
+
+// ============================================================
+// TOOL 7: PIXEL DITHERING
+// ============================================================
+let ditherPixelSize = 1;
+function setDitherPx(btn) {
+  ditherPixelSize = parseInt(btn.dataset.dpx);
+  document.querySelectorAll('[data-dpx]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function runDithering() {
+  const img = state.sourceImage;
+  const px = ditherPixelSize;
+  const algo = document.getElementById('ditherAlgo').value;
+  const paletteName = document.getElementById('ditherPalette').value;
+
+  // Determine palette
+  let palette;
+  if (paletteName === 'custom') {
+    const colorLimit = parseInt(document.getElementById('ditherColors').value) || 8;
+    // Extract palette via median cut from the image
+    const tmpC = document.createElement('canvas');
+    const maxDim = 128;
+    const sc = Math.min(1, maxDim / Math.max(img.width, img.height));
+    tmpC.width = Math.max(1, Math.round(img.width * sc));
+    tmpC.height = Math.max(1, Math.round(img.height * sc));
+    const tCtx = tmpC.getContext('2d');
+    tCtx.drawImage(img, 0, 0, tmpC.width, tmpC.height);
+    const { data } = tCtx.getImageData(0, 0, tmpC.width, tmpC.height);
+    const pixels = [];
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i+3] > 128) pixels.push([data[i], data[i+1], data[i+2]]);
+    }
+    palette = medianCut(pixels, colorLimit);
+  } else {
+    palette = PALETTES[paletteName] || PALETTES.gameboy;
+  }
+
+  // Downscale if px > 1
+  const w = Math.max(1, Math.round(img.width / px));
+  const h = Math.max(1, Math.round(img.height / px));
+
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = w; tmpCanvas.height = h;
+  const tCtx = tmpCanvas.getContext('2d');
+  tCtx.imageSmoothingEnabled = true;
+  tCtx.drawImage(img, 0, 0, w, h);
+
+  const imgData = tCtx.getImageData(0, 0, w, h);
+
+  // Apply dithering algorithm
+  switch (algo) {
+    case 'floyd':   floydSteinberg(imgData, palette); break;
+    case 'bayer':   bayerDither(imgData, palette, 4); break;
+    case 'ordered': bayerDither(imgData, palette, 8); break;
+    default:        quantizeOnly(imgData, palette); break;
+  }
+
+  tCtx.putImageData(imgData, 0, 0);
+
+  // Upscale back
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = img.width; outCanvas.height = img.height;
+  const oCtx = outCanvas.getContext('2d');
+  oCtx.imageSmoothingEnabled = false;
+  oCtx.drawImage(tmpCanvas, 0, 0, img.width, img.height);
+
+  displayOutputCanvas(outCanvas, `${algo} dithering · ${palette.length} colors · ${px}px blocks`);
+}
+
+function quantizeOnly(imgData, palette) {
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i+3] < 128) continue;
+    const c = findNearest(palette, data[i], data[i+1], data[i+2]);
+    data[i] = c[0]; data[i+1] = c[1]; data[i+2] = c[2];
+  }
+}
+
+function floydSteinberg(imgData, palette) {
+  const { data, width: w, height: h } = imgData;
+  const buf = new Float32Array(data.length);
+  for (let i = 0; i < data.length; i++) buf[i] = data[i];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (buf[idx+3] < 128) continue;
+
+      const oldR = Math.max(0, Math.min(255, buf[idx]));
+      const oldG = Math.max(0, Math.min(255, buf[idx+1]));
+      const oldB = Math.max(0, Math.min(255, buf[idx+2]));
+
+      const [newR, newG, newB] = findNearest(palette, oldR, oldG, oldB);
+
+      data[idx] = newR; data[idx+1] = newG; data[idx+2] = newB; data[idx+3] = 255;
+
+      const eR = oldR - newR, eG = oldG - newG, eB = oldB - newB;
+
+      function spread(dx, dy, factor) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) return;
+        const ni = (ny * w + nx) * 4;
+        buf[ni]   += eR * factor;
+        buf[ni+1] += eG * factor;
+        buf[ni+2] += eB * factor;
+      }
+
+      spread(1, 0, 7/16);
+      spread(-1, 1, 3/16);
+      spread(0, 1, 5/16);
+      spread(1, 1, 1/16);
+    }
+  }
+}
+
+// Bayer matrix dithering
+function bayerDither(imgData, palette, size) {
+  const { data, width: w, height: h } = imgData;
+
+  const bayer4 = [
+    [ 0,  8,  2, 10],
+    [12,  4, 14,  6],
+    [ 3, 11,  1,  9],
+    [15,  7, 13,  5],
+  ];
+  const bayer8 = [
+    [ 0,32, 8,40, 2,34,10,42],
+    [48,16,56,24,50,18,58,26],
+    [12,44, 4,36,14,46, 6,38],
+    [60,28,52,20,62,30,54,22],
+    [ 3,35,11,43, 1,33, 9,41],
+    [51,19,59,27,49,17,57,25],
+    [15,47, 7,39,13,45, 5,37],
+    [63,31,55,23,61,29,53,21],
+  ];
+  const matrix = size === 4 ? bayer4 : bayer8;
+  const mSize = size;
+  const mMax = size === 4 ? 16 : 64;
+  const strength = 50;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (data[idx+3] < 128) continue;
+      const threshold = (matrix[y % mSize][x % mSize] / mMax - 0.5) * strength;
+      const r = Math.max(0, Math.min(255, data[idx] + threshold));
+      const g = Math.max(0, Math.min(255, data[idx+1] + threshold));
+      const b = Math.max(0, Math.min(255, data[idx+2] + threshold));
+      const c = findNearest(palette, r, g, b);
+      data[idx] = c[0]; data[idx+1] = c[1]; data[idx+2] = c[2];
+    }
+  }
+}
+
+// ============================================================
+// OUTPUT & DOWNLOAD
+// ============================================================
+function displayOutputCanvas(canvas, info) {
+  const preview = document.getElementById('previewCanvas');
+  const ctx = preview.getContext('2d');
+  preview.width = canvas.width;
+  preview.height = canvas.height;
+  ctx.drawImage(canvas, 0, 0);
+  preview.style.display = 'block';
+  document.getElementById('canvasEmpty').style.display = 'none';
+  document.getElementById('canvasToolbar').style.display = 'flex';
+  document.getElementById('canvasInfo').textContent = info || `${canvas.width} × ${canvas.height}px`;
+  document.getElementById('downloadBtn').style.display = 'block';
+  document.getElementById('downloadBtn').textContent = '⬇ Download PNG';
+
+  // Store output canvas for download
+  state.outputCanvas = canvas;
+  state.outputType = state.outputType || 'png';
+}
+
+function downloadResult() {
+  if (state.outputType === 'svg' && state.svgData) {
+    const blob = new Blob([state.svgData], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pixeltools-${state.currentTool}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+    state.outputType = null;
+    return;
+  }
+  if (state.outputCanvas) {
+    downloadCanvas(state.outputCanvas, `pixeltools-${state.currentTool}.png`);
+  }
+}
+
+function downloadCanvas(canvas, filename) {
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function rgbToHex(r, g, b) {
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+function showToast(msg) {
+  let toast = document.getElementById('copyToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copyToast';
+    toast.className = 'copy-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// ============================================================
+// DARK MODE TOGGLE
+// ============================================================
+function initDarkMode() {
+  const btn = document.getElementById('darkToggle');
+  const body = document.body;
+
+  const saved = localStorage.getItem('pt-theme') || 'dark';
+  if (saved === 'light') {
+    body.classList.remove('dark-mode');
+    body.classList.add('light-mode');
+    btn.querySelector('.toggle-icon').textContent = '🌙';
+  }
+
+  btn.addEventListener('click', () => {
+    const isLight = body.classList.contains('light-mode');
+    body.classList.toggle('dark-mode', isLight);
+    body.classList.toggle('light-mode', !isLight);
+    btn.querySelector('.toggle-icon').textContent = isLight ? '☀️' : '🌙';
+    localStorage.setItem('pt-theme', isLight ? 'dark' : 'light');
+  });
+}
+
+// ============================================================
+// HAMBURGER MENU
+// ============================================================
+function initHamburger() {
+  document.getElementById('hamburger').addEventListener('click', () => {
+    document.getElementById('navLinks').classList.toggle('open');
+  });
+}
+
+// ============================================================
+// HERO CANVAS ANIMATION
+// ============================================================
+function initHeroCanvas() {
+  const canvas = document.getElementById('heroCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const CELL = 16;
+  const cols = W / CELL, rows = H / CELL;
+
+  // Generate a random pixel art pattern inspired by the FOWLSIGNS glyph
+  const art = [];
+  for (let y = 0; y < rows; y++) {
+    art[y] = [];
+    for (let x = 0; x < cols; x++) {
+      art[y][x] = Math.random() < 0.3 ? randomPixelColor() : null;
+    }
+  }
+
+  // Draw a simple "eye" shape in the center as homage to the glyph
+  const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
+  const eyeW = 8, eyeH = 5;
+  for (let dy = -Math.floor(eyeH/2); dy <= Math.floor(eyeH/2); dy++) {
+    for (let dx = -Math.floor(eyeW/2); dx <= Math.floor(eyeW/2); dx++) {
+      const inEllipse = (dx*dx)/(eyeW*eyeW/4) + (dy*dy)/(eyeH*eyeH/4) <= 1;
+      if (inEllipse) {
+        const inPupil = (dx*dx)/(eyeW*eyeW/16) + (dy*dy)/(eyeH*eyeH/16) <= 1;
+        art[cy+dy][cx+dx] = inPupil ? '#1A1817' : '#C0392B';
+      }
+    }
+  }
+
+  let tick = 0;
+  function drawFrame() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (!art[y][x]) continue;
+        const pulse = 0.7 + 0.3 * Math.sin(tick * 0.02 + x * 0.3 + y * 0.4);
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = art[y][x];
+        ctx.fillRect(x * CELL, y * CELL, CELL - 1, CELL - 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+    tick++;
+    requestAnimationFrame(drawFrame);
+  }
+  drawFrame();
+}
+
+function randomPixelColor() {
+  const colors = ['#C0392B','#E8503A','#E07B54','#2D2826','#433B38','#1A1817'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// ============================================================
+// EXPOSE GLOBALS — required for inline onclick= attributes in HTML
+// ============================================================
+window.showHome             = showHome;
+window.openTool             = openTool;
+window.setScale             = setScale;
+window.syncCustomScale      = syncCustomScale;
+window.setSvgOpt            = setSvgOpt;
+window.setPixelSize         = setPixelSize;
+window.setPaletteCount      = setPaletteCount;
+window.setGridSize          = setGridSize;
+window.setDitherPx          = setDitherPx;
+window.copySwatch           = copySwatch;
+window.downloadPaletteImage = downloadPaletteImage;
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  initDarkMode();
+  initHamburger();
+  initUploads();
+  initHeroCanvas();
+
+  // Smooth scroll for "Explore Tools" anchor only
+  document.querySelectorAll('a[href="#tools"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+});

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PixelTools – Free Online Pixel Art Tools by FOWLSIGNS™</title>
+  <meta name="description" content="PixelTools by FOWLSIGNS™ — free browser-based tools for pixel artists, indie game devs, and designers. Upscale, convert, dither, and extract palettes — no upload, no account." />
+  <meta property="og:title" content="PixelTools – Free Online Pixel Art Tools" />
+  <meta property="og:description" content="7 free pixel art tools that run entirely in your browser. Upscaler, SVG converter, dithering, palette extractor & more. By FOWLSIGNS™." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="og-image.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="dark-mode">
+
+  <!-- TOP NAV -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="#home" class="nav-logo" onclick="showHome()">
+        <span class="logo-pixel">P</span>ixelTools
+        <span class="nav-brand">by FOWLSIGNS™</span>
+      </a>
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#" onclick="openTool('upscaler')">Upscaler</a></li>
+        <li><a href="#" onclick="openTool('svg')">Pixel → SVG</a></li>
+        <li><a href="#" onclick="openTool('pixelate')">Image → Pixel</a></li>
+        <li><a href="#" onclick="openTool('palette')">Palette</a></li>
+        <li><a href="#" onclick="openTool('grid')">Grid</a></li>
+        <li><a href="#" onclick="openTool('sprite')">Sprite Sheet</a></li>
+        <li><a href="#" onclick="openTool('dither')">Dithering</a></li>
+        <li>
+          <button class="dark-toggle" id="darkToggle" title="Toggle dark/light mode">
+            <span class="toggle-icon">☀️</span>
+          </button>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- HOME PAGE -->
+  <section id="home" class="page active">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-bg-grid"></div>
+      <div class="hero-content">
+        <div class="hero-badge">FREE · BROWSER-BASED · NO UPLOAD</div>
+        <h1 class="hero-title">
+          Pixel Art<br/>
+          <span class="accent">Toolkit</span>
+        </h1>
+        <p class="hero-sub">7 professional tools for pixel artists, indie devs & designers.<br/>Everything runs in your browser. Zero uploads, zero accounts.</p>
+        <div class="hero-cta">
+          <button class="btn-primary" onclick="openTool('upscaler')">Start Creating →</button>
+          <a href="#tools" class="btn-ghost">Explore Tools ↓</a>
+        </div>
+        <div class="hero-brand">
+          <img src="fowlsigns-glyph.png" alt="FOWLSIGNS™" class="hero-glyph" onerror="this.style.display='none'" />
+          <span>Crafted by <strong>FOWLSIGNS™</strong></span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <canvas id="heroCanvas" width="320" height="320"></canvas>
+      </div>
+    </div>
+
+    <!-- TOOLS GRID -->
+    <section id="tools" class="tools-section">
+      <div class="section-header">
+        <span class="section-label">THE TOOLKIT</span>
+        <h2>Everything you need,<br/>nothing you don't.</h2>
+      </div>
+      <div class="tools-grid">
+
+        <div class="tool-card" onclick="openTool('upscaler')">
+          <div class="tool-icon">⬆️</div>
+          <div class="tool-num">01</div>
+          <h3>Pixel Art Upscaler</h3>
+          <p>Scale pixel art up to 10x with perfect nearest-neighbor interpolation. Zero blur, zero artifacts.</p>
+          <div class="tool-tags"><span>2x</span><span>4x</span><span>8x</span><span>10x</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card" onclick="openTool('svg')">
+          <div class="tool-icon">✦</div>
+          <div class="tool-num">02</div>
+          <h3>Pixel Art → SVG</h3>
+          <p>Convert pixel art into scalable SVG. Each pixel becomes a perfectly optimized vector rectangle.</p>
+          <div class="tool-tags"><span>SVG</span><span>Vector</span><span>Optimized</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card" onclick="openTool('pixelate')">
+          <div class="tool-icon">⬛</div>
+          <div class="tool-num">03</div>
+          <h3>Image → Pixel Art</h3>
+          <p>Turn any photo into pixel art. Choose grid size and reduce colors for that authentic retro look.</p>
+          <div class="tool-tags"><span>8px</span><span>16px</span><span>32px</span><span>64px</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card" onclick="openTool('palette')">
+          <div class="tool-icon">🎨</div>
+          <div class="tool-num">04</div>
+          <h3>Color Palette Extractor</h3>
+          <p>Extract dominant colors from any image. Copy HEX codes instantly or download your full palette.</p>
+          <div class="tool-tags"><span>HEX</span><span>Dominant Colors</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card" onclick="openTool('grid')">
+          <div class="tool-icon">⊞</div>
+          <div class="tool-num">05</div>
+          <h3>Pixel Grid Overlay</h3>
+          <p>Overlay a customizable pixel grid on any image. Perfect for game dev references and sprite guides.</p>
+          <div class="tool-tags"><span>8px</span><span>16px</span><span>32px</span><span>64px</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card" onclick="openTool('sprite')">
+          <div class="tool-icon">▦</div>
+          <div class="tool-num">06</div>
+          <h3>Sprite Sheet Generator</h3>
+          <p>Combine animation frames into a sprite sheet. Set columns, spacing, and preview before export.</p>
+          <div class="tool-tags"><span>Sprites</span><span>Frames</span><span>Export</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+        <div class="tool-card featured" onclick="openTool('dither')">
+          <div class="tool-icon">◈</div>
+          <div class="tool-num">07</div>
+          <div class="featured-badge">⚡ Most Popular</div>
+          <h3>Pixel Dithering Tool</h3>
+          <p>Apply Floyd-Steinberg, Bayer, or ordered dithering with retro palettes. Game Boy, NES, Grayscale.</p>
+          <div class="tool-tags"><span>Floyd-Steinberg</span><span>Bayer</span><span>Game Boy</span><span>NES</span></div>
+          <button class="tool-cta">Open Tool →</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-logo">PixelTools</div>
+          <p>A free toolkit for pixel artists, indie devs & designers.<br/>All processing happens in your browser.</p>
+        </div>
+        <div class="footer-copy">
+          <span>© 2025 <strong>FOWLSIGNS™</strong> — All rights reserved.</span>
+          <span>Made with ❤️ for the pixel art community.</span>
+        </div>
+      </div>
+    </footer>
+
+  </section>
+
+  <!-- TOOL WORKSPACE -->
+  <section id="toolPage" class="page">
+    <div class="tool-workspace">
+
+      <!-- Sidebar -->
+      <aside class="tool-sidebar">
+        <button class="back-btn" onclick="showHome()">← Back</button>
+        <div class="tool-sidebar-header">
+          <div class="tool-sidebar-icon" id="sidebarIcon"></div>
+          <h2 id="sidebarTitle">Tool</h2>
+          <p id="sidebarDesc" class="tool-sidebar-desc"></p>
+        </div>
+
+        <!-- Settings Panel (dynamically populated) -->
+        <div class="settings-panel" id="settingsPanel"></div>
+
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-inner">
+            <div class="upload-icon">⬆</div>
+            <p class="upload-title">Drop image here</p>
+            <p class="upload-sub">or click to browse</p>
+            <p class="upload-formats">PNG · JPG · GIF · WebP</p>
+          </div>
+          <input type="file" id="fileInput" accept="image/*" />
+        </div>
+
+        <!-- Sprite sheet multi-upload (special case) -->
+        <div class="upload-zone hidden" id="multiUploadZone">
+          <div class="upload-inner">
+            <div class="upload-icon">▦</div>
+            <p class="upload-title">Drop multiple frames</p>
+            <p class="upload-sub">or click to browse</p>
+            <p class="upload-formats">PNG · JPG (multiple files)</p>
+          </div>
+          <input type="file" id="multiFileInput" accept="image/*" multiple />
+        </div>
+
+        <!-- Action buttons -->
+        <div class="action-bar" id="actionBar" style="display:none;">
+          <button class="btn-process" id="processBtn">Process Image</button>
+          <button class="btn-download" id="downloadBtn" style="display:none;">⬇ Download</button>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading" style="display:none;">
+          <div class="loading-bar"><div class="loading-fill" id="loadingFill"></div></div>
+          <p>Processing...</p>
+        </div>
+
+      </aside>
+
+      <!-- Main Canvas Area -->
+      <main class="tool-main">
+        <div class="canvas-toolbar" id="canvasToolbar" style="display:none;">
+          <span class="canvas-info" id="canvasInfo"></span>
+        </div>
+        <div class="canvas-container" id="canvasContainer">
+          <div class="canvas-empty" id="canvasEmpty">
+            <div class="empty-icon">⬡</div>
+            <p>Upload an image to get started</p>
+          </div>
+          <canvas id="previewCanvas" style="display:none;"></canvas>
+        </div>
+        <!-- Palette output (special) -->
+        <div class="palette-output" id="paletteOutput" style="display:none;"></div>
+        <!-- Sprite frames preview -->
+        <div class="sprite-frames" id="spriteFrames" style="display:none;"></div>
+      </main>
+
+    </div>
+  </section>
+
+  <script src="script.js"></script>
+</body>
+</html>
